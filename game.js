@@ -9,7 +9,9 @@ let redLight=false,lightPhase=0,eventKey='',rainDrops=[];const once=new Set();
 let wheelAngle=0,wheelDragging=false,lastPointerAngle=null;const MAX_WHEEL=450;
 let hazard=false,trafficStopped=false,routeTrack=[];
 let phoneSteeringEnabled=false,orientationListening=false,tiltBase=null,tiltRaw=0,tiltSteer=0,stopRequested=false;
-let roadSource='sim',cameraStream=null,streetPanorama=null,streetService=null,streetLastWorld=-999,streetLoading=false,streetBaseHeading=90;
+let roadSource='sim',cameraStream=null,streetLastWorld=-999,streetLoading=false,streetBaseHeading=90;
+const KARTA_API='https://api.openstreetcam.org/2.0';
+let kartaSeqId=null,kartaFrames=[],kartaSeqPage=1,kartaLastQueryAt=0,kartaLastTarget=null,kartaPhotoId=null;
 $$('.mode').forEach(b=>b.onclick=()=>{$$('.mode').forEach(x=>x.classList.remove('active'));b.classList.add('active');mode=b.dataset.mode});
 $('#startBtn').onclick=startGame;
 $('#roadSource').addEventListener('change',updateRoadSourceSetup);updateRoadSourceSetup();$('#helpBtn').onclick=()=>$('#help').classList.remove('hidden');$('#closeHelp').onclick=()=>$('#help').classList.add('hidden');$('#soundBtn').onclick=()=>{sound=!sound;$('#soundBtn').textContent=sound?'🔊 Sound':'🔇 Muted'};
@@ -93,7 +95,7 @@ function haversine(a,b,c,d){const R=6371000,r=x=>x*Math.PI/180,p1=r(a),p2=r(c),d
 
 function updateRoadSourceSetup(){
  const src=$('#roadSource')?.value||'sim';
- $('#mapsKeyWrap')?.classList.toggle('hidden',src!=='street');
+
 }
 function stopCamera(){if(cameraStream){cameraStream.getTracks().forEach(t=>t.stop());cameraStream=null}}
 function resetOutsideLayers(){
@@ -101,14 +103,14 @@ function resetOutsideLayers(){
  $('#streetView').classList.add('hidden');$('#arCamera').classList.add('hidden');$('#arOverlay').classList.add('hidden');canvas.classList.add('hidden');
 }
 async function activateRoadSource(){
- resetOutsideLayers();streetPanorama=null;streetService=null;streetLastWorld=-999;
+ resetOutsideLayers();streetLastWorld=-999;kartaSeqId=null;kartaFrames=[];kartaSeqPage=1;kartaPhotoId=null;kartaLastTarget=null;
  if(roadSource==='ar'){
    $('#viewBadge').textContent='AR LIVE CAMERA';$('#arCamera').classList.remove('hidden');$('#arOverlay').classList.remove('hidden');
    await startArCamera();return;
  }
  if(roadSource==='street'){
-   $('#viewBadge').textContent='SINGAPORE STREET VIEW';$('#streetView').classList.remove('hidden');
-   try{await initStreetView()}catch(err){console.error(err);announce('Real Singapore Street View could not start. Check the Google Maps key and internet connection.');$('#viewBadge').textContent='STREET VIEW REQUIRED'}
+   $('#viewBadge').textContent='FREE STREET IMAGERY';$('#streetView').classList.remove('hidden');
+   try{await initStreetView()}catch(err){console.error(err);announce('Street imagery could not start. Check the internet connection.');$('#viewBadge').textContent='IMAGERY UNAVAILABLE'}
    return;
  }
  canvas.classList.remove('hidden');$('#viewBadge').textContent='OFFLINE ROAD';
@@ -121,21 +123,65 @@ async function startArCamera(){
    announce('AR live windscreen active. Keep the device safely mounted or held by a passenger.');
  }catch(e){console.error(e);announce('Camera permission is needed for AR live view.');}
 }
-function loadGoogleMaps(key){
- if(window.google?.maps?.StreetViewPanorama)return Promise.resolve();
- return new Promise((resolve,reject)=>{
-   const cb='busCaptainMapsReady_'+Math.random().toString(36).slice(2);window[cb]=()=>{delete window[cb];resolve()};
-   const sc=document.createElement('script');sc.async=true;sc.defer=true;sc.onerror=()=>reject(new Error('Maps JavaScript API failed to load'));
-   sc.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(key)+'&v=weekly&callback='+cb;document.head.appendChild(sc);
- });
+function normalizeKartaData(json){
+ const d=json?.result?.data;
+ if(Array.isArray(d))return d;
+ if(d&&typeof d==='object')return [d];
+ return [];
+}
+function kartaDistance(p,target){
+ const lat=Number(p.matchLat??p.lat),lng=Number(p.matchLng??p.lng);
+ if(!Number.isFinite(lat)||!Number.isFinite(lng))return 1e12;
+ return haversine(target.lat,target.lng,lat,lng);
+}
+function angleDiff(a,b){let d=((Number(a||0)-Number(b||0)+540)%360)-180;return Math.abs(d)}
+function chooseKartaPhoto(frames,target,desiredHeading){
+ if(!frames?.length)return null;
+ return [...frames].sort((a,b)=>{
+   const da=kartaDistance(a,target),db=kartaDistance(b,target);
+   const ha=angleDiff(a.heading,desiredHeading),hb=angleDiff(b.heading,desiredHeading);
+   return (da+ha*1.2)-(db+hb*1.2);
+ })[0]||null;
+}
+function kartaImageUrl(photo){
+ return photo?.fileurlProc || photo?.fileUrlProc || photo?.fileurl || photo?.fileUrl || photo?.fileurlLTh || photo?.fileurlTh || '';
+}
+function showKartaPhoto(photo,desiredHeading){
+ if(!photo)return false;
+ const url=kartaImageUrl(photo);if(!url)return false;
+ const img=$('#kartaImage'),status=$('#imageryStatus');
+ if(String(photo.id)!==String(kartaPhotoId)){
+   kartaPhotoId=photo.id; status.textContent='Loading street imagery…'; status.classList.remove('hidden');
+   img.onload=()=>status.classList.add('hidden');
+   img.onerror=()=>{status.textContent='Image unavailable — searching nearby…';status.classList.remove('hidden')};
+   img.src=url;
+ }
+ const heading=Number(photo.heading);const delta=Number.isFinite(heading)?((desiredHeading-heading+540)%360)-180:0;
+ img.style.setProperty('--pan',Math.max(-45,Math.min(45,delta))+'%');
+ return true;
+}
+async function fetchKartaNearby(target,desiredHeading){
+ const q=new URLSearchParams({lat:String(target.lat),lng:String(target.lng),zoomLevel:'17',join:'sequence',orderBy:'id',orderDirection:'desc'});
+ const r=await fetch(KARTA_API+'/photo/?'+q.toString(),{cache:'force-cache'});if(!r.ok)throw new Error('KartaView '+r.status);
+ const json=await r.json();const photos=normalizeKartaData(json);const best=chooseKartaPhoto(photos,target,desiredHeading);
+ if(best){
+   const sid=best.sequenceId || best.sequence_id || best.sequence?.id;
+   const si=Number(best.sequenceIndex||best.sequence_index||0);
+   if(sid){await loadKartaSequencePage(String(sid),Math.floor(si/150)+1)}
+   return chooseKartaPhoto(kartaFrames.length?kartaFrames:photos,target,desiredHeading) || best;
+ }
+ return null;
+}
+async function loadKartaSequencePage(seqId,page=1){
+ if(kartaSeqId===seqId&&kartaSeqPage===page&&kartaFrames.length)return;
+ const r=await fetch(KARTA_API+'/photo/?sequenceId='+encodeURIComponent(seqId)+'&page='+page+'&itemsPerPage=150',{cache:'force-cache'});
+ if(!r.ok)return;const json=await r.json();const frames=normalizeKartaData(json);
+ if(frames.length){kartaSeqId=seqId;kartaSeqPage=page;kartaFrames=frames}
 }
 async function initStreetView(){
- const key=$('#mapsApiKey').value.trim() || window.BUS_CAPTAIN_CONFIG?.googleMapsApiKey || '';
- if(!key)throw new Error('Google Maps API key required');
- await loadGoogleMaps(key);
- streetService=new google.maps.StreetViewService();
- const first=routeTrack[0]||route.find(x=>Number.isFinite(x.lat)&&Number.isFinite(x.lng));if(!first)throw new Error('No route geometry available');streetPanorama=new google.maps.StreetViewPanorama($('#streetView'),{position:first,pov:{heading:90,pitch:1},zoom:1,linksControl:false,panControl:false,addressControl:false,fullscreenControl:false,enableCloseButton:false,clickToGo:false,scrollwheel:false,motionTracking:false,motionTrackingControl:false,showRoadLabels:true});
- await updateStreetView(true);announce('Real Singapore Street View windscreen active.');
+ const first=routeTrack[0]||route.find(x=>Number.isFinite(x.lat)&&Number.isFinite(x.lng));if(!first)throw new Error('No route geometry available');
+ $('#imageryStatus').textContent='Finding free street imagery…';$('#imageryStatus').classList.remove('hidden');
+ await updateStreetView(true);announce('Free street-level imagery windscreen active.');
 }
 function interpolatePath(f){
  const path=routeTrack.length>1?routeTrack:route.filter(x=>Number.isFinite(x.lat)&&Number.isFinite(x.lng)).map(x=>({lat:x.lat,lng:x.lng}));if(path.length<2)throw new Error('No route path available');f=Math.max(0,Math.min(.9999,f));const n=path.length-1,x=f*n,i=Math.floor(x),u=x-i,a=path[i],b=path[Math.min(i+1,path.length-1)];
@@ -143,15 +189,25 @@ function interpolatePath(f){
 }
 function bearing(a,b){const r=Math.PI/180,p1=a.lat*r,p2=b.lat*r,dl=(b.lng-a.lng)*r;const y=Math.sin(dl)*Math.cos(p2),x=Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl);return (Math.atan2(y,x)/r+360)%360}
 async function updateStreetView(force=false){
- if(!streetPanorama||!streetService||streetLoading)return;
+ if(streetLoading)return;
  if(mode==='ride'&&lastGps){await showGpsStreetView(lastGps,force);return}
- if(!force&&Math.abs(world-streetLastWorld)<10){streetPanorama.setPov({heading:streetBaseHeading+(wheelAngle/MAX_WHEEL)*12,pitch:1});return}
- streetLastWorld=world;const maxWorld=Math.max(1,(route.length-1)*520),f=Math.max(0,Math.min(1,world/maxWorld));const target=interpolatePath(f);streetBaseHeading=target.heading;streetLoading=true;
- try{const result=await streetService.getPanorama({location:{lat:target.lat,lng:target.lng},radius:55,preference:google.maps.StreetViewPreference.NEAREST,source:google.maps.StreetViewSource.OUTDOOR});if(result?.data?.location?.latLng){streetPanorama.setPosition(result.data.location.latLng);streetPanorama.setPov({heading:streetBaseHeading+(wheelAngle/MAX_WHEEL)*12,pitch:1})}}catch(e){console.warn('No nearby Street View panorama',e)}finally{streetLoading=false}
+ const maxWorld=Math.max(1,(route.length-1)*520),f=Math.max(0,Math.min(1,world/maxWorld));const target=interpolatePath(f);streetBaseHeading=target.heading+(wheelAngle/MAX_WHEEL)*10;
+ const seqBest=chooseKartaPhoto(kartaFrames,target,streetBaseHeading);
+ if(seqBest&&kartaDistance(seqBest,target)<115){showKartaPhoto(seqBest,streetBaseHeading);return}
+ if(!force&&kartaLastTarget&&haversine(kartaLastTarget.lat,kartaLastTarget.lng,target.lat,target.lng)<120)return;
+ if(!force&&Date.now()-kartaLastQueryAt<2500)return;
+ streetLoading=true;kartaLastQueryAt=Date.now();kartaLastTarget={lat:target.lat,lng:target.lng};
+ try{const p=await fetchKartaNearby(target,streetBaseHeading);if(p){showKartaPhoto(p,streetBaseHeading);$('#viewBadge').textContent='KARTAVIEW STREET IMAGERY'}else{$('#imageryStatus').textContent='No community street imagery at this point — continuing route…';$('#imageryStatus').classList.remove('hidden')}}
+ catch(e){console.warn('KartaView imagery error',e);$('#imageryStatus').textContent='Street imagery temporarily unavailable';$('#imageryStatus').classList.remove('hidden')}
+ finally{streetLoading=false}
 }
 async function showGpsStreetView(cur,force=false){
- if(!streetPanorama||!streetService||streetLoading)return;if(!force&&cur._shown&&haversine(cur._shown.lat,cur._shown.lon,cur.lat,cur.lon)<15)return;streetLoading=true;
- try{const result=await streetService.getPanorama({location:{lat:cur.lat,lng:cur.lon},radius:60,preference:google.maps.StreetViewPreference.NEAREST,source:google.maps.StreetViewSource.OUTDOOR});if(result?.data?.location?.latLng){streetPanorama.setPosition(result.data.location.latLng);if(cur.heading!=null&&Number.isFinite(cur.heading))streetBaseHeading=cur.heading;streetPanorama.setPov({heading:streetBaseHeading,pitch:1});cur._shown={lat:cur.lat,lon:cur.lon}}}catch(e){console.warn(e)}finally{streetLoading=false}
+ if(streetLoading)return;const target={lat:cur.lat,lng:cur.lon};if(Number.isFinite(cur.heading))streetBaseHeading=cur.heading;
+ const seqBest=chooseKartaPhoto(kartaFrames,target,streetBaseHeading);if(seqBest&&kartaDistance(seqBest,target)<115){showKartaPhoto(seqBest,streetBaseHeading);return}
+ if(!force&&kartaLastTarget&&haversine(kartaLastTarget.lat,kartaLastTarget.lng,target.lat,target.lng)<80)return;
+ if(!force&&Date.now()-kartaLastQueryAt<2500)return;
+ streetLoading=true;kartaLastQueryAt=Date.now();kartaLastTarget={...target};
+ try{const p=await fetchKartaNearby(target,streetBaseHeading);if(p)showKartaPhoto(p,streetBaseHeading);else{$('#imageryStatus').textContent='No KartaView imagery near this GPS position';$('#imageryStatus').classList.remove('hidden')}}catch(e){console.warn(e)}finally{streetLoading=false}
 }
 
 async function loadBusData(){
