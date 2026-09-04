@@ -10,10 +10,14 @@ let wheelAngle=0,wheelDragging=false,lastPointerAngle=null;const MAX_WHEEL=450;
 let hazard=false,trafficStopped=false,routeTrack=[];
 let phoneSteeringEnabled=false,orientationListening=false,tiltBase=null,tiltRaw=0,tiltSteer=0,stopRequested=false;
 let roadSource='sim',cameraStream=null,streetLastWorld=-999,streetLoading=false,streetBaseHeading=90;
-const KARTA_API='https://api.openstreetcam.org/2.0';
-let kartaSeqId=null,kartaFrames=[],kartaSeqPage=1,kartaLastQueryAt=0,kartaLastTarget=null,kartaPhotoId=null;
+const MAPILLARY_GRAPH='https://graph.mapillary.com';
+let mapillaryToken=localStorage.getItem('busCaptainMapillaryToken')||'';
+let mapillaryFrames=[],mapillaryLastQueryAt=0,mapillaryLastTarget=null,mapillaryImageId=null;
 $$('.mode').forEach(b=>b.onclick=()=>{$$('.mode').forEach(x=>x.classList.remove('active'));b.classList.add('active');mode=b.dataset.mode});
 $('#startBtn').onclick=startGame;
+const tokenInput=$('#mapillaryToken'),tokenStatus=$('#tokenStatus');
+if(tokenInput){tokenInput.value=mapillaryToken;if(tokenStatus)tokenStatus.textContent=mapillaryToken?'Saved on this device':'Not saved yet';}
+$('#saveTokenBtn')?.addEventListener('click',()=>{const v=String(tokenInput?.value||'').trim();if(!v){localStorage.removeItem('busCaptainMapillaryToken');mapillaryToken='';if(tokenStatus)tokenStatus.textContent='Token removed';return;}mapillaryToken=v;localStorage.setItem('busCaptainMapillaryToken',v);if(tokenStatus)tokenStatus.textContent='Saved on this device';});
 $('#roadSource').addEventListener('change',updateRoadSourceSetup);updateRoadSourceSetup();$('#helpBtn').onclick=()=>$('#help').classList.remove('hidden');$('#closeHelp').onclick=()=>$('#help').classList.add('hidden');$('#soundBtn').onclick=()=>{sound=!sound;$('#soundBtn').textContent=sound?'🔊 Sound':'🔇 Muted'};
 $('#doorBtn').onclick=toggleDoors;$('#bellBtn').onclick=requestStop;$('#announceBtn').onclick=()=>announce('Next stop, '+route[stopIndex].n+'.');$('#kneelBtn').onclick=()=>{kneel=!kneel;active('#kneelBtn',kneel);announce(kneel?'Bus lowered for easier boarding.':'Bus returned to normal ride height.')};$('#leftSignalBtn').onclick=()=>toggleSignal(-1);$('#rightSignalBtn').onclick=()=>toggleSignal(1);$('#wiperBtn').onclick=()=>{wipers=!wipers;active('#wiperBtn',wipers)};$('#lightBtn').onclick=()=>{lights=!lights;active('#lightBtn',lights)};$('#gpsBtn').onclick=enableGps;
 $('#mobileLeftSignal')?.addEventListener('click',()=>toggleSignal(-1));$('#mobileRightSignal')?.addEventListener('click',()=>toggleSignal(1));$('#mobileStopRequest')?.addEventListener('click',requestStop);$('#mobileDoorBtn')?.addEventListener('click',toggleDoors);$('#tiltCalibrateBtn')?.addEventListener('click',calibrateTilt);
@@ -38,6 +42,9 @@ function setWheelVisual(){const wheel=$('#steeringWheel');if(!wheel)return;wheel
 async function startGame(){
  mode=$('.mode.active').dataset.mode;roadSource='street';
  const service=String($('#service').value||'').trim();if(!service){alert('Enter a bus service number.');return}
+ mapillaryToken=String($('#mapillaryToken')?.value||mapillaryToken||'').trim();
+ if(!mapillaryToken){alert('Enter a free Mapillary client access token first. It can be saved on this device so you only need to enter it once.');return}
+ localStorage.setItem('busCaptainMapillaryToken',mapillaryToken);
  $('#hudService').textContent=service;
  route=[{n:'Loading actual route…',c:'—',lat:NaN,lng:NaN},{n:'Loading…',c:'—',lat:NaN,lng:NaN}];
  phoneSteeringEnabled=!!$('#phoneSteering')?.checked&&isPhoneLike();if(phoneSteeringEnabled)await enablePhoneSteering();
@@ -103,13 +110,13 @@ function resetOutsideLayers(){
  $('#streetView').classList.add('hidden');$('#arCamera').classList.add('hidden');$('#arOverlay').classList.add('hidden');canvas.classList.add('hidden');
 }
 async function activateRoadSource(){
- resetOutsideLayers();streetLastWorld=-999;kartaSeqId=null;kartaFrames=[];kartaSeqPage=1;kartaPhotoId=null;kartaLastTarget=null;
+ resetOutsideLayers();streetLastWorld=-999;mapillaryFrames=[];mapillaryImageId=null;mapillaryLastTarget=null;
  if(roadSource==='ar'){
    $('#viewBadge').textContent='AR LIVE CAMERA';$('#arCamera').classList.remove('hidden');$('#arOverlay').classList.remove('hidden');
    await startArCamera();return;
  }
  if(roadSource==='street'){
-   $('#viewBadge').textContent='FREE STREET IMAGERY';$('#streetView').classList.remove('hidden');
+   $('#viewBadge').textContent='MAPILLARY STREET VIEW';$('#streetView').classList.remove('hidden');
    try{await initStreetView()}catch(err){console.error(err);announce('Street imagery could not start. Check the internet connection.');$('#viewBadge').textContent='IMAGERY UNAVAILABLE'}
    return;
  }
@@ -123,65 +130,50 @@ async function startArCamera(){
    announce('AR live windscreen active. Keep the device safely mounted or held by a passenger.');
  }catch(e){console.error(e);announce('Camera permission is needed for AR live view.');}
 }
-function normalizeKartaData(json){
- const d=json?.result?.data;
- if(Array.isArray(d))return d;
- if(d&&typeof d==='object')return [d];
- return [];
-}
-function kartaDistance(p,target){
- const lat=Number(p.matchLat??p.lat),lng=Number(p.matchLng??p.lng);
+function mapillaryDistance(p,target){
+ const c=p?.geometry?.coordinates||[];const lng=Number(c[0]),lat=Number(c[1]);
  if(!Number.isFinite(lat)||!Number.isFinite(lng))return 1e12;
  return haversine(target.lat,target.lng,lat,lng);
 }
 function angleDiff(a,b){let d=((Number(a||0)-Number(b||0)+540)%360)-180;return Math.abs(d)}
-function chooseKartaPhoto(frames,target,desiredHeading){
+function chooseMapillaryImage(frames,target,desiredHeading){
  if(!frames?.length)return null;
  return [...frames].sort((a,b)=>{
-   const da=kartaDistance(a,target),db=kartaDistance(b,target);
-   const ha=angleDiff(a.heading,desiredHeading),hb=angleDiff(b.heading,desiredHeading);
-   return (da+ha*1.2)-(db+hb*1.2);
+   const da=mapillaryDistance(a,target),db=mapillaryDistance(b,target);
+   const ha=angleDiff(a.compass_angle,desiredHeading),hb=angleDiff(b.compass_angle,desiredHeading);
+   const panoA=a.is_pano? -18:0,panoB=b.is_pano? -18:0;
+   return (da+ha*.9+panoA)-(db+hb*.9+panoB);
  })[0]||null;
 }
-function kartaImageUrl(photo){
- return photo?.fileurlProc || photo?.fileUrlProc || photo?.fileurl || photo?.fileUrl || photo?.fileurlLTh || photo?.fileurlTh || '';
-}
-function showKartaPhoto(photo,desiredHeading){
- if(!photo)return false;
- const url=kartaImageUrl(photo);if(!url)return false;
- const img=$('#kartaImage'),status=$('#imageryStatus');
- if(String(photo.id)!==String(kartaPhotoId)){
-   kartaPhotoId=photo.id; status.textContent='Loading street imagery…'; status.classList.remove('hidden');
+function showMapillaryImage(photo,desiredHeading){
+ if(!photo?.thumb_2048_url)return false;
+ const img=$('#mapillaryImage'),status=$('#imageryStatus');
+ if(String(photo.id)!==String(mapillaryImageId)){
+   mapillaryImageId=photo.id;status.textContent='Loading Mapillary street imagery…';status.classList.remove('hidden');
    img.onload=()=>status.classList.add('hidden');
    img.onerror=()=>{status.textContent='Image unavailable — searching nearby…';status.classList.remove('hidden')};
-   img.src=url;
+   img.src=photo.thumb_2048_url;
  }
- const heading=Number(photo.heading);const delta=Number.isFinite(heading)?((desiredHeading-heading+540)%360)-180:0;
+ const heading=Number(photo.compass_angle);const delta=Number.isFinite(heading)?((desiredHeading-heading+540)%360)-180:0;
  img.style.setProperty('--pan',Math.max(-45,Math.min(45,delta))+'%');
+ img.style.setProperty('--zoom',photo.is_pano?'1.18':'1.08');
  return true;
 }
-async function fetchKartaNearby(target,desiredHeading){
- const q=new URLSearchParams({lat:String(target.lat),lng:String(target.lng),zoomLevel:'17',join:'sequence',orderBy:'id',orderDirection:'desc'});
- const r=await fetch(KARTA_API+'/photo/?'+q.toString(),{cache:'force-cache'});if(!r.ok)throw new Error('KartaView '+r.status);
- const json=await r.json();const photos=normalizeKartaData(json);const best=chooseKartaPhoto(photos,target,desiredHeading);
- if(best){
-   const sid=best.sequenceId || best.sequence_id || best.sequence?.id;
-   const si=Number(best.sequenceIndex||best.sequence_index||0);
-   if(sid){await loadKartaSequencePage(String(sid),Math.floor(si/150)+1)}
-   return chooseKartaPhoto(kartaFrames.length?kartaFrames:photos,target,desiredHeading) || best;
- }
- return null;
-}
-async function loadKartaSequencePage(seqId,page=1){
- if(kartaSeqId===seqId&&kartaSeqPage===page&&kartaFrames.length)return;
- const r=await fetch(KARTA_API+'/photo/?sequenceId='+encodeURIComponent(seqId)+'&page='+page+'&itemsPerPage=150',{cache:'force-cache'});
- if(!r.ok)return;const json=await r.json();const frames=normalizeKartaData(json);
- if(frames.length){kartaSeqId=seqId;kartaSeqPage=page;kartaFrames=frames}
+async function fetchMapillaryNearby(target,desiredHeading){
+ if(!mapillaryToken)throw new Error('Mapillary token missing');
+ const radiusM=180,latDelta=radiusM/111320,lngDelta=radiusM/(111320*Math.max(.2,Math.cos(target.lat*Math.PI/180)));
+ const bbox=[target.lng-lngDelta,target.lat-latDelta,target.lng+lngDelta,target.lat+latDelta].join(',');
+ const fields='id,geometry,compass_angle,thumb_2048_url,sequence,captured_at,is_pano';
+ const q=new URLSearchParams({bbox,fields,limit:'100',access_token:mapillaryToken});
+ const r=await fetch(MAPILLARY_GRAPH+'/images?'+q.toString(),{cache:'no-store'});
+ if(!r.ok){let msg='Mapillary '+r.status;try{const j=await r.json();msg=j?.error?.message||msg}catch{}throw new Error(msg)}
+ const json=await r.json();const frames=Array.isArray(json?.data)?json.data:[];mapillaryFrames=frames;
+ return chooseMapillaryImage(frames,target,desiredHeading);
 }
 async function initStreetView(){
  const first=routeTrack[0]||route.find(x=>Number.isFinite(x.lat)&&Number.isFinite(x.lng));if(!first)throw new Error('No route geometry available');
- $('#imageryStatus').textContent='Finding free street imagery…';$('#imageryStatus').classList.remove('hidden');
- await updateStreetView(true);announce('Free street-level imagery windscreen active.');
+ $('#imageryStatus').textContent='Finding Mapillary imagery near this Singapore route…';$('#imageryStatus').classList.remove('hidden');
+ await updateStreetView(true);announce('Mapillary street-level windscreen active.');
 }
 function interpolatePath(f){
  const path=routeTrack.length>1?routeTrack:route.filter(x=>Number.isFinite(x.lat)&&Number.isFinite(x.lng)).map(x=>({lat:x.lat,lng:x.lng}));if(path.length<2)throw new Error('No route path available');f=Math.max(0,Math.min(.9999,f));const n=path.length-1,x=f*n,i=Math.floor(x),u=x-i,a=path[i],b=path[Math.min(i+1,path.length-1)];
@@ -192,22 +184,22 @@ async function updateStreetView(force=false){
  if(streetLoading)return;
  if(mode==='ride'&&lastGps){await showGpsStreetView(lastGps,force);return}
  const maxWorld=Math.max(1,(route.length-1)*520),f=Math.max(0,Math.min(1,world/maxWorld));const target=interpolatePath(f);streetBaseHeading=target.heading+(wheelAngle/MAX_WHEEL)*10;
- const seqBest=chooseKartaPhoto(kartaFrames,target,streetBaseHeading);
- if(seqBest&&kartaDistance(seqBest,target)<115){showKartaPhoto(seqBest,streetBaseHeading);return}
- if(!force&&kartaLastTarget&&haversine(kartaLastTarget.lat,kartaLastTarget.lng,target.lat,target.lng)<120)return;
- if(!force&&Date.now()-kartaLastQueryAt<2500)return;
- streetLoading=true;kartaLastQueryAt=Date.now();kartaLastTarget={lat:target.lat,lng:target.lng};
- try{const p=await fetchKartaNearby(target,streetBaseHeading);if(p){showKartaPhoto(p,streetBaseHeading);$('#viewBadge').textContent='KARTAVIEW STREET IMAGERY'}else{$('#imageryStatus').textContent='No community street imagery at this point — continuing route…';$('#imageryStatus').classList.remove('hidden')}}
- catch(e){console.warn('KartaView imagery error',e);$('#imageryStatus').textContent='Street imagery temporarily unavailable';$('#imageryStatus').classList.remove('hidden')}
+ const cached=chooseMapillaryImage(mapillaryFrames,target,streetBaseHeading);
+ if(cached&&mapillaryDistance(cached,target)<110){showMapillaryImage(cached,streetBaseHeading);return}
+ if(!force&&mapillaryLastTarget&&haversine(mapillaryLastTarget.lat,mapillaryLastTarget.lng,target.lat,target.lng)<75)return;
+ if(!force&&Date.now()-mapillaryLastQueryAt<2200)return;
+ streetLoading=true;mapillaryLastQueryAt=Date.now();mapillaryLastTarget={lat:target.lat,lng:target.lng};
+ try{const p=await fetchMapillaryNearby(target,streetBaseHeading);if(p){showMapillaryImage(p,streetBaseHeading);$('#viewBadge').textContent='MAPILLARY STREET VIEW'}else{$('#imageryStatus').textContent='No Mapillary image close to this point — continuing along the route…';$('#imageryStatus').classList.remove('hidden')}}
+ catch(e){console.warn('Mapillary imagery error',e);$('#imageryStatus').textContent=e.message.includes('token')?'Mapillary token is missing or invalid':'Mapillary imagery temporarily unavailable';$('#imageryStatus').classList.remove('hidden')}
  finally{streetLoading=false}
 }
 async function showGpsStreetView(cur,force=false){
  if(streetLoading)return;const target={lat:cur.lat,lng:cur.lon};if(Number.isFinite(cur.heading))streetBaseHeading=cur.heading;
- const seqBest=chooseKartaPhoto(kartaFrames,target,streetBaseHeading);if(seqBest&&kartaDistance(seqBest,target)<115){showKartaPhoto(seqBest,streetBaseHeading);return}
- if(!force&&kartaLastTarget&&haversine(kartaLastTarget.lat,kartaLastTarget.lng,target.lat,target.lng)<80)return;
- if(!force&&Date.now()-kartaLastQueryAt<2500)return;
- streetLoading=true;kartaLastQueryAt=Date.now();kartaLastTarget={...target};
- try{const p=await fetchKartaNearby(target,streetBaseHeading);if(p)showKartaPhoto(p,streetBaseHeading);else{$('#imageryStatus').textContent='No KartaView imagery near this GPS position';$('#imageryStatus').classList.remove('hidden')}}catch(e){console.warn(e)}finally{streetLoading=false}
+ const cached=chooseMapillaryImage(mapillaryFrames,target,streetBaseHeading);if(cached&&mapillaryDistance(cached,target)<110){showMapillaryImage(cached,streetBaseHeading);return}
+ if(!force&&mapillaryLastTarget&&haversine(mapillaryLastTarget.lat,mapillaryLastTarget.lng,target.lat,target.lng)<60)return;
+ if(!force&&Date.now()-mapillaryLastQueryAt<2200)return;
+ streetLoading=true;mapillaryLastQueryAt=Date.now();mapillaryLastTarget={...target};
+ try{const p=await fetchMapillaryNearby(target,streetBaseHeading);if(p)showMapillaryImage(p,streetBaseHeading);else{$('#imageryStatus').textContent='No Mapillary imagery near this GPS position';$('#imageryStatus').classList.remove('hidden')}}catch(e){console.warn(e);$('#imageryStatus').textContent='Mapillary imagery unavailable';$('#imageryStatus').classList.remove('hidden')}finally{streetLoading=false}
 }
 
 async function loadBusData(){

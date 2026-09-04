@@ -1,50 +1,50 @@
-# Bus Captain SG V8 — Free Street Imagery Edition
+# Bus Captain SG V9 — Mapillary Street View Edition
 
 Mobile-first Singapore bus-captain role-play / simulator for Android and iPhone.
 
-## V8 removes Google Maps billing
+## What changed in V9
 
-V8 no longer uses Google Maps JavaScript API or Google Street View. There is:
+V9 replaces KartaView with **Mapillary** because KartaView coverage was too sparse for the selected Singapore bus routes.
 
-- no Google API key field
-- no Google billing account requirement
+There is still:
+
+- no Google Maps billing account
+- no Google Maps API key
 - no LTA DataMall API key
-- no Cloudflare Worker requirement
+- no Cloudflare Worker
 
-The windscreen now uses public community-contributed **KartaView** street-level imagery. KartaView public imagery and geographic search endpoints can be accessed without authentication for normal community use.
+V9 uses the public static Singapore bus-route dataset for route and stop geometry and uses Mapillary street-level imagery for the windscreen.
 
-## Important imagery limitation
+## One-time Mapillary token
 
-KartaView is crowdsourced rather than Google's comprehensive Street View. Singapore coverage and capture dates vary by road. When imagery is available, the game shows real street-level photographs and follows the selected bus route. When a point has no nearby community imagery, the game keeps the route state and searches again as the bus progresses.
+Mapillary requires a free client access token. The game has a token field on the start screen. Press **Save token** and the token is stored in the browser's localStorage on that device, so it does not need to be re-entered every session.
 
-## Two modes
+The token is a browser/client token, not a Google billing credential. Do not commit a personal secret/server token into GitHub.
 
-### 1. Live GPS Captain
+## Option 1 — Live GPS Captain
 
 Use while physically riding on the selected Singapore bus.
 
-- GPS controls the journey.
-- KartaView street imagery follows the phone location when coverage exists.
+- GPS controls the real journey.
+- Mapillary imagery follows the phone GPS position when nearby coverage exists.
 - No accelerator, brake or normal turn-signal controls.
 - Phone rotation animates the steering wheel for role-play only.
 - STOP REQUEST, HORN and HAZARD remain available.
 - Door OPEN/CLOSE appears only when GPS indicates the bus is slow/stopped near a selected-service bus stop.
 
-### 2. Full Route Simulator
+## Option 2 — Full Route Simulator
 
 Use without GPS.
 
 - Select a Singapore bus service and direction.
-- Static Singapore bus route/stop data supplies the route geometry.
-- KartaView provides real street-level imagery when coverage is available.
-- Accelerator, brake, steering, indicators, doors, bell, announcements, kneeling, wipers and lights remain available.
+- Actual bus-route/stop geometry supplies the route path.
+- Mapillary shows nearby real street-level photographs along that route.
+- Accelerator, brake, steering, indicators, doors, bell, announcements, kneeling, wipers and lights are available.
 - Phone rotation controls steering on supported Android/iPhone devices.
 
 ## Hosting
 
-Upload all files to the root of the existing GitHub Pages repository. No API secrets are needed.
-
-Example:
+Upload these files to the root of the GitHub Pages repository:
 
 ```text
 Bus-driver/
@@ -55,8 +55,8 @@ Bus-driver/
   README.md
 ```
 
-The game needs HTTPS for reliable GPS and motion sensor permissions. GitHub Pages already provides HTTPS.
+The HTML references `styles.css?v=9` and `game.js?v=9` to reduce stale browser-cache problems after deployment.
 
-## Internet requirement
+## Important limitation
 
-Internet is still required for route data and KartaView street imagery. The game does not incur Google Maps API charges because it no longer calls Google Maps.
+Mapillary is community-contributed imagery, so some Singapore road sections may still have no nearby image. V9 displays a clear status message instead of a black windscreen and searches again as the bus progresses.
