@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
-  <meta name="theme-color" content="#0d2f28" />
-  <title>Bus Captain SG — Cockpit Edition</title>
+  <meta name="theme-color" content="#202327" />
+  <title>Bus Captain SG — Driver Seat Edition</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 <div id="app">
   <header class="topbar">
-    <div><h1>🚌 Bus Captain SG</h1><p>Cockpit Edition · Singapore driving simulator</p></div>
+    <div><h1>🚌 Bus Captain SG</h1><p>Driver Seat Edition · first-person Singapore bus simulator</p></div>
     <div class="header-actions"><button id="soundBtn" class="ghost">🔊 Sound</button><button id="helpBtn" class="ghost">❓ Help</button></div>
   </header>
 
@@ -24,7 +24,7 @@
   </section>
 
   <main id="game" class="hidden">
-    <section class="hud">
+    <section class="hud compact-hud">
       <div class="hud-card route"><span>SERVICE</span><strong id="hudService">118</strong></div>
       <div class="hud-card"><span>SPEED</span><strong><b id="speed">0</b> km/h</strong></div>
       <div class="hud-card wide"><span>NEXT STOP</span><strong id="nextStop">—</strong><small id="nextCode">—</small></div>
@@ -32,61 +32,81 @@
       <div class="hud-card"><span>CAPTAIN SCORE</span><strong id="score">100</strong></div>
     </section>
 
-    <section class="sim-shell">
-      <div class="windscreen panel">
+    <section class="driver-cab panel">
+      <div class="windscreen-frame">
+        <div class="mirror mirror-left"><div id="leftMirrorScene"></div></div>
+        <div class="mirror mirror-right"><div id="rightMirrorScene"></div></div>
+        <div class="interior-mirror">INTERIOR MIRROR</div>
+        <div class="pillar pillar-left"></div><div class="pillar pillar-mid"></div><div class="pillar pillar-right"></div>
         <canvas id="road" width="1280" height="720" aria-label="Driver point of view Singapore bus simulator"></canvas>
         <div class="windscreen-tint"></div>
         <div id="announcement" class="announcement">Welcome aboard.</div>
         <div id="gpsBanner" class="gps-banner hidden">📍 Ride-Along GPS active</div>
-        <div id="eventBadge" class="event-badge">40 km/h</div>
-        <div class="mirror mirror-left"><div id="leftMirrorScene"></div></div>
-        <div class="mirror mirror-right"><div id="rightMirrorScene"></div></div>
-
-        <div class="cockpit">
-          <div class="dashboard-left">
-            <div class="indicator-strip"><span id="leftInd">◀</span><span id="doorLamp">🚪</span><span id="rightInd">▶</span></div>
-            <div class="speedo"><b id="dashSpeed">0</b><small>km/h</small></div>
-          </div>
-          <div class="steering-wheel"><div class="wheel-center">SG<br><small>BUS</small></div></div>
-          <div class="dashboard-screen">
-            <span>NEXT STOP</span><strong id="dashStop">—</strong><small id="dashCode">—</small>
-            <div class="progress"><i id="routeProgress"></i></div>
-          </div>
-          <div class="ticket-console"><span>TRIP</span><b id="tripTime">00:00</b><small id="scheduleStatus">On time</small></div>
-        </div>
+        <div id="eventBadge" class="event-badge">40</div>
       </div>
 
-      <aside class="ops panel">
-        <h2>Captain's Console</h2>
-        <div class="ops-grid">
-          <button id="doorBtn" class="op-btn">🚪 Open doors</button>
-          <button id="bellBtn" class="op-btn">🔔 Stop bell</button>
-          <button id="announceBtn" class="op-btn">📢 Next stop</button>
-          <button id="kneelBtn" class="op-btn">♿ Kneel bus</button>
-          <button id="leftSignalBtn" class="op-btn">⬅️ Left signal</button>
-          <button id="rightSignalBtn" class="op-btn">➡️ Right signal</button>
-          <button id="wiperBtn" class="op-btn">🌧️ Wipers</button>
-          <button id="lightBtn" class="op-btn">💡 Headlights</button>
-        </div>
-        <div class="status-box">
-          <div><span>Doors</span><b id="doorStatus">Closed</b></div><div><span>Bus</span><b id="busStatus">Ready</b></div><div><span>Road</span><b id="roadStatus">Clear</b></div>
-        </div>
-        <div class="mission"><h3>Captain Mission</h3><p id="missionText">Drive safely to the next bus stop.</p></div>
-        <div class="lesson"><h3>Singapore Road Tip</h3><p id="fact">Keep left unless overtaking.</p></div>
-      </aside>
+      <div class="cab-lower">
+        <section class="left-cab-console">
+          <div class="fare-machine">
+            <div class="fare-screen"><small>FARE SYSTEM</small><b id="tripTime">00:00</b><span id="scheduleStatus">On time</span></div>
+            <div class="reader-ring">TAP</div>
+            <div class="fare-pad">1&nbsp;&nbsp;2&nbsp;&nbsp;3<br>4&nbsp;&nbsp;5&nbsp;&nbsp;6<br>7&nbsp;&nbsp;8&nbsp;&nbsp;9</div>
+          </div>
+          <div class="left-switch-bank">
+            <button id="doorBtn" class="cockpit-btn red">DOOR<br><small>OPEN/CLOSE</small></button>
+            <button id="bellBtn" class="cockpit-btn">🔔<br><small>BELL</small></button>
+            <button id="announceBtn" class="cockpit-btn">📢<br><small>NEXT STOP</small></button>
+            <button id="kneelBtn" class="cockpit-btn blue">♿<br><small>KNEEL</small></button>
+          </div>
+        </section>
+
+        <section class="driver-station">
+          <div class="instrument-binnacle">
+            <div class="warning-row"><span id="leftInd">◀</span><span id="doorLamp">DOOR</span><span id="rightInd">▶</span></div>
+            <div class="gauges">
+              <div class="dial"><span>km/h</span><b id="dashSpeed">0</b><i></i></div>
+              <div class="center-display"><small>NEXT STOP</small><strong id="dashStop">—</strong><span id="dashCode">—</span><div class="progress"><i id="routeProgress"></i></div></div>
+              <div class="dial rpm"><span>POWER</span><b>READY</b><i></i></div>
+            </div>
+          </div>
+
+          <div id="steeringWheel" class="steering-wheel" aria-label="Steering wheel" role="slider" aria-valuemin="-450" aria-valuemax="450" aria-valuenow="0">
+            <div class="wheel-rim"></div>
+            <div class="wheel-spoke spoke-a"></div><div class="wheel-spoke spoke-b"></div><div class="wheel-spoke spoke-c"></div>
+            <div class="wheel-center"><span>SG</span><small>BUS</small></div>
+          </div>
+
+          <div class="pedal-well">
+            <button id="brakeBtn" class="foot-pedal brake-pedal"><span>BRAKE</span></button>
+            <button id="goBtn" class="foot-pedal accel-pedal"><span>ACCEL</span></button>
+          </div>
+        </section>
+
+        <section class="right-cab-console">
+          <div class="side-screen"><small>VEHICLE STATUS</small><b id="busStatus">Ready</b><span id="roadStatus">Clear</span><span id="doorStatus">Closed</span></div>
+          <div class="right-switch-grid">
+            <button id="leftSignalBtn" class="cockpit-btn signal">⬅<small>LEFT</small></button>
+            <button id="rightSignalBtn" class="cockpit-btn signal">➡<small>RIGHT</small></button>
+            <button id="wiperBtn" class="cockpit-btn">🌧️<small>WIPERS</small></button>
+            <button id="lightBtn" class="cockpit-btn">💡<small>LIGHTS</small></button>
+          </div>
+          <div class="key-switch"><span>MASTER</span><div class="key-hole"></div></div>
+          <div class="mission"><h3>Captain Mission</h3><p id="missionText">Drive safely to the next bus stop.</p></div>
+          <div class="lesson"><h3>Singapore Road Tip</h3><p id="fact">Keep left unless overtaking.</p></div>
+        </section>
+      </div>
     </section>
 
     <section id="driverControls" class="controls panel">
-      <button id="leftBtn" class="steer">↙<small>LEFT</small></button>
-      <button id="brakeBtn" class="pedal brake">BRAKE<small>↓ / S</small></button>
-      <button id="goBtn" class="pedal go">ACCELERATE<small>↑ / W</small></button>
-      <button id="rightBtn" class="steer">↘<small>RIGHT</small></button>
+      <button id="leftBtn" class="steer">↶<small>TURN WHEEL LEFT</small></button>
+      <div class="steer-help">Drag the steering wheel with mouse or finger<br><small>A / D or ← / → also steer</small></div>
+      <button id="rightBtn" class="steer">↷<small>TURN WHEEL RIGHT</small></button>
     </section>
 
     <section id="rideControls" class="panel ride hidden"><div><h2>Ride-Along Mode</h2><p>Use this while riding a real Singapore bus. GPS stays in this browser and drives the virtual trip progress.</p></div><button id="gpsBtn" class="primary">Enable GPS</button></section>
   </main>
 
-  <div id="help" class="modal hidden"><div class="modal-card"><button id="closeHelp" class="close">✕</button><h2>How to play</h2><p><b>Driver:</b> accelerate and brake smoothly, keep to the left lane, obey signals, indicate before entering or leaving a bus bay, stop inside the yellow stop zone and open the doors only when stationary.</p><p><b>Keyboard:</b> W/↑ accelerate, S/↓ brake, A/← and D/→ steer. Q/E indicators. Space toggles doors.</p><p><b>Ride-Along:</b> enable location permission while travelling. GPS movement advances the simulator without uploading your location in this prototype.</p></div></div>
+  <div id="help" class="modal hidden"><div class="modal-card"><button id="closeHelp" class="close">✕</button><h2>Driver Seat Controls</h2><p><b>Steering wheel:</b> drag it directly with a mouse or finger. The bus wheel turns multiple rotations like a real heavy vehicle steering wheel. A/D or arrow keys work too.</p><p><b>Pedals:</b> press the cockpit accelerator and brake pedals, or use W/↑ and S/↓.</p><p><b>Operations:</b> door, bell, next-stop announcement and kneeling are on the left console. Indicators, wipers and lights are on the right console.</p><p><b>Driving:</b> keep left, indicate before leaving a stop, stop smoothly, and open doors only after stopping.</p></div></div>
 </div>
 <script src="game.js"></script>
 </body>
