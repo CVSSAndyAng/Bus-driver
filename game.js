@@ -1,12 +1,7 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const canvas=$('#road'),ctx=canvas.getContext('2d');
-const routes={
- '24':[{n:'Tampines Int',c:'75009'},{n:'Opp Tampines Hub',c:'76191'},{n:'Bedok Reservoir Rd',c:'75351'},{n:'Kaki Bukit Ave 1',c:'71081'},{n:'Eunos Link',c:'72041'},{n:'Paya Lebar Rd',c:'70231'},{n:'City Fringe',c:'80011'}],
- '27':[{n:'Tampines Int',c:'75009'},{n:'Tampines Ave 5',c:'76059'},{n:'Pasir Ris Dr 1',c:'77029'},{n:'Loyang Ave',c:'98039'},{n:'Airport Area',c:'95129'},{n:'Hougang Ave',c:'64009'}],
- '36':[{n:'Changi Airport',c:'95009'},{n:'Airport Blvd',c:'95159'},{n:'Marine Parade Rd',c:'92049'},{n:'Mountbatten Rd',c:'80279'},{n:'Suntec City',c:'02151'},{n:'Tomlinson Rd',c:'09179'}],
- '53':[{n:'Bishan Int',c:'53009'},{n:'Lor 6 Toa Payoh',c:'52059'},{n:'Serangoon Rd',c:'60089'},{n:'Upper Paya Lebar Rd',c:'70289'},{n:'Pasir Ris Dr 1',c:'77009'},{n:'Changi Airport',c:'95009'}],
- '118':[{n:'Punggol Int',c:'65009'},{n:'Punggol Central',c:'65119'},{n:'TPE',c:'65189'},{n:'Tampines Ave 10',c:'75489'},{n:'Tampines Ave 5',c:'76059'},{n:'Tampines Int',c:'75009'}]
-};
+const BUS_DATA_BASE='https://data.busrouter.sg/v1';
+let busDataPromise=null;
 const tips=['Keep left unless overtaking.','Signal before leaving a bus bay.','Bus captains should watch for cyclists when entering or leaving bus bays.','Stop smoothly so standing passengers can stay balanced.','Open passenger doors only when the bus is fully stopped.','Give pedestrians plenty of time at crossings.','Check both mirrors before moving away from a stop.'];
 let mode='ride',route=[],running=false,accel=false,braking=false,left=false,right=false,doors=false,kneel=false,wipers=false,lights=false,signal=0,sound=true;
 let speed=0,lane=-.18,score=100,passengers=12,stopIndex=1,world=0,atStop=false,served=false,last=performance.now(),startedAt=0,gpsWatch=null,lastGps=null,gpsDistance=0;
@@ -15,10 +10,6 @@ let wheelAngle=0,wheelDragging=false,lastPointerAngle=null;const MAX_WHEEL=450;
 let hazard=false,trafficStopped=false,routeTrack=[];
 let phoneSteeringEnabled=false,orientationListening=false,tiltBase=null,tiltRaw=0,tiltSteer=0,stopRequested=false;
 let roadSource='sim',cameraStream=null,streetPanorama=null,streetService=null,streetLastWorld=-999,streetLoading=false,streetBaseHeading=90;
-const SG_STREET_PATH=[
- {lat:1.29372,lng:103.85658},{lat:1.29343,lng:103.85769},{lat:1.29313,lng:103.85888},{lat:1.29272,lng:103.86014},
- {lat:1.29224,lng:103.86118},{lat:1.29162,lng:103.86191},{lat:1.29087,lng:103.86202},{lat:1.29015,lng:103.86162}
-];
 $$('.mode').forEach(b=>b.onclick=()=>{$$('.mode').forEach(x=>x.classList.remove('active'));b.classList.add('active');mode=b.dataset.mode});
 $('#startBtn').onclick=startGame;
 $('#roadSource').addEventListener('change',updateRoadSourceSetup);updateRoadSourceSetup();$('#helpBtn').onclick=()=>$('#help').classList.remove('hidden');$('#closeHelp').onclick=()=>$('#help').classList.add('hidden');$('#soundBtn').onclick=()=>{sound=!sound;$('#soundBtn').textContent=sound?'🔊 Sound':'🔇 Muted'};
@@ -46,13 +37,13 @@ async function startGame(){
  mode=$('.mode.active').dataset.mode;roadSource='street';
  const service=String($('#service').value||'').trim();if(!service){alert('Enter a bus service number.');return}
  $('#hudService').textContent=service;
- route=routes[service]||[{n:'Loading actual route…',c:'—'},{n:'Next stop',c:'—'}];
+ route=[{n:'Loading actual route…',c:'—',lat:NaN,lng:NaN},{n:'Loading…',c:'—',lat:NaN,lng:NaN}];
  phoneSteeringEnabled=!!$('#phoneSteering')?.checked&&isPhoneLike();if(phoneSteeringEnabled)await enablePhoneSteering();
  running=true;speed=0;lane=-.18;wheelAngle=0;setWheelVisual();score=100;passengers=12;stopIndex=1;world=0;doors=false;served=false;atStop=false;signal=0;hazard=false;trafficStopped=false;stopRequested=false;once.clear();startedAt=performance.now();last=performance.now();
  $('#setup').classList.add('hidden');$('#game').classList.remove('hidden');document.body.classList.toggle('phone-driving',phoneSteeringEnabled);document.body.classList.toggle('mode-live',mode==='ride');
  $('#mobileDriveUI')?.classList.remove('hidden');$('#simTopControls')?.classList.toggle('hidden',mode!=='driver');$('#liveTopControls')?.classList.toggle('hidden',mode!=='ride');$('#mobilePedals')?.classList.toggle('hidden',mode!=='driver');$('#driverControls').classList.toggle('hidden',mode!=='driver'||phoneSteeringEnabled);$('#rideControls').classList.toggle('hidden',mode!=='ride');$('#directionWrap')?.classList.toggle('hidden',mode==='ride');
  try{screen.orientation?.lock?.('landscape').catch(()=>{})}catch{}
- try{await loadActualRoute(service,mode==='driver'?Number($('#direction').value):null)}catch(e){console.warn(e);announce('Live route data is not available yet. Street View will still use your GPS in Live mode.');}
+ try{await loadActualRoute(service,mode==='driver'?Number($('#direction').value):null)}catch(e){console.error(e);running=false;alert('Could not load Singapore bus route data for service '+service+'. Check your internet connection or bus number and try again.');$('#setup').classList.remove('hidden');$('#game').classList.add('hidden');return}
  await activateRoadSource();
  if(mode==='ride'){announce('Live GPS Captain ready. The real bus controls movement. Horn and hazards are available; doors appear at recognised bus stops.');await enableGps();}
  else announce('Full Route Simulator ready. Street View follows the actual Singapore route.');
@@ -142,13 +133,12 @@ async function initStreetView(){
  const key=$('#mapsApiKey').value.trim() || window.BUS_CAPTAIN_CONFIG?.googleMapsApiKey || '';
  if(!key)throw new Error('Google Maps API key required');
  await loadGoogleMaps(key);
- if(mode==='driver'&&route?.[0]?.lat&&routeTrack.length<2){await buildGoogleDrivingTrack();}
  streetService=new google.maps.StreetViewService();
- const first=routeTrack[0]||SG_STREET_PATH[0];streetPanorama=new google.maps.StreetViewPanorama($('#streetView'),{position:first,pov:{heading:90,pitch:1},zoom:1,linksControl:false,panControl:false,addressControl:false,fullscreenControl:false,enableCloseButton:false,clickToGo:false,scrollwheel:false,motionTracking:false,motionTrackingControl:false,showRoadLabels:true});
+ const first=routeTrack[0]||route.find(x=>Number.isFinite(x.lat)&&Number.isFinite(x.lng));if(!first)throw new Error('No route geometry available');streetPanorama=new google.maps.StreetViewPanorama($('#streetView'),{position:first,pov:{heading:90,pitch:1},zoom:1,linksControl:false,panControl:false,addressControl:false,fullscreenControl:false,enableCloseButton:false,clickToGo:false,scrollwheel:false,motionTracking:false,motionTrackingControl:false,showRoadLabels:true});
  await updateStreetView(true);announce('Real Singapore Street View windscreen active.');
 }
 function interpolatePath(f){
- const path=routeTrack.length>1?routeTrack:SG_STREET_PATH;f=Math.max(0,Math.min(.9999,f));const n=path.length-1,x=f*n,i=Math.floor(x),u=x-i,a=path[i],b=path[Math.min(i+1,path.length-1)];
+ const path=routeTrack.length>1?routeTrack:route.filter(x=>Number.isFinite(x.lat)&&Number.isFinite(x.lng)).map(x=>({lat:x.lat,lng:x.lng}));if(path.length<2)throw new Error('No route path available');f=Math.max(0,Math.min(.9999,f));const n=path.length-1,x=f*n,i=Math.floor(x),u=x-i,a=path[i],b=path[Math.min(i+1,path.length-1)];
  const p={lat:a.lat+(b.lat-a.lat)*u,lng:a.lng+(b.lng-a.lng)*u};p.heading=bearing(a,b);return p;
 }
 function bearing(a,b){const r=Math.PI/180,p1=a.lat*r,p2=b.lat*r,dl=(b.lng-a.lng)*r;const y=Math.sin(dl)*Math.cos(p2),x=Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl);return (Math.atan2(y,x)/r+360)%360}
@@ -164,20 +154,51 @@ async function showGpsStreetView(cur,force=false){
  try{const result=await streetService.getPanorama({location:{lat:cur.lat,lng:cur.lon},radius:60,preference:google.maps.StreetViewPreference.NEAREST,source:google.maps.StreetViewSource.OUTDOOR});if(result?.data?.location?.latLng){streetPanorama.setPosition(result.data.location.latLng);if(cur.heading!=null&&Number.isFinite(cur.heading))streetBaseHeading=cur.heading;streetPanorama.setPov({heading:streetBaseHeading,pitch:1});cur._shown={lat:cur.lat,lon:cur.lon}}}catch(e){console.warn(e)}finally{streetLoading=false}
 }
 
-async function buildGoogleDrivingTrack(){
- if(!google.maps.DirectionsService||route.length<2)return;const svc=new google.maps.DirectionsService(),out=[];let start=0;
- while(start<route.length-1){const end=Math.min(route.length-1,start+9),chunk=route.slice(start,end+1),req={origin:{lat:chunk[0].lat,lng:chunk[0].lng},destination:{lat:chunk[chunk.length-1].lat,lng:chunk[chunk.length-1].lng},waypoints:chunk.slice(1,-1).map(s=>({location:{lat:s.lat,lng:s.lng},stopover:false})),optimizeWaypoints:false,travelMode:google.maps.TravelMode.DRIVING};
-  try{const res=await svc.route(req);const pts=res.routes?.[0]?.overview_path||[];for(const pt of pts)out.push({lat:pt.lat(),lng:pt.lng()});}catch(e){console.warn('Directions segment failed',e);for(const st of chunk)out.push({lat:st.lat,lng:st.lng})}
-  start=end;
+async function loadBusData(){
+ if(busDataPromise)return busDataPromise;
+ busDataPromise=Promise.all([
+   fetch(BUS_DATA_BASE+'/services.json',{cache:'force-cache'}),
+   fetch(BUS_DATA_BASE+'/stops.json',{cache:'force-cache'}),
+   fetch(BUS_DATA_BASE+'/routes.json',{cache:'force-cache'})
+ ]).then(async rs=>{
+   for(const r of rs)if(!r.ok)throw new Error('Bus data '+r.status);
+   const [services,stops,shapes]=await Promise.all(rs.map(r=>r.json()));
+   return {services,stops,shapes};
+ });
+ return busDataPromise;
+}
+function decodePolyline(str){
+ const out=[];let i=0,lat=0,lng=0;
+ while(i<str.length){
+   let b,shift=0,result=0;do{b=str.charCodeAt(i++)-63;result|=(b&31)<<shift;shift+=5}while(b>=32);lat+=(result&1)?~(result>>1):(result>>1);
+   shift=0;result=0;do{b=str.charCodeAt(i++)-63;result|=(b&31)<<shift;shift+=5}while(b>=32);lng+=(result&1)?~(result>>1):(result>>1);
+   out.push({lat:lat/1e5,lng:lng/1e5});
  }
- routeTrack=out.length>1?out:route.map(s=>({lat:s.lat,lng:s.lng}));
+ return out;
+}
+function routeFromStaticData(service,routeIndex,data){
+ const svc=data.services[service];if(!svc||!Array.isArray(svc.routes)||!svc.routes.length)throw new Error('Unknown bus service');
+ const idx=Math.max(0,Math.min(svc.routes.length-1,routeIndex));
+ const codes=svc.routes[idx];
+ const stops=codes.map((code,sequence)=>{const x=data.stops[code];if(!x)return null;return {code,description:x[2]||code,road:x[3]||'',lat:Number(x[1]),lng:Number(x[0]),sequence:sequence+1}}).filter(Boolean);
+ let shape=[];const encoded=data.shapes?.[service]?.[idx];if(typeof encoded==='string'&&encoded)shape=decodePolyline(encoded);
+ if(shape.length<2)shape=stops.map(x=>({lat:x.lat,lng:x.lng}));
+ return {direction:idx+1,name:svc.name||service,stops,shape};
 }
 async function loadActualRoute(service,direction){
- const base=window.BUS_CAPTAIN_CONFIG?.routeApiUrl||'/api/route';let u=base+'?service='+encodeURIComponent(service);if(direction)u+='&direction='+direction;const r=await fetch(u);if(!r.ok)throw new Error('route api '+r.status);const data=await r.json();
- if(data.directions&&mode==='ride'){window.__liveDirections=data.directions;return}
- const d=data.route||data;applyRouteData(d);
+ const data=await loadBusData();const svc=data.services[service];if(!svc)throw new Error('Bus service not found');
+ if(mode==='ride'){
+   window.__liveDirections=svc.routes.map((_,i)=>routeFromStaticData(service,i,data));
+   if(window.__liveDirections.length===1)applyRouteData(window.__liveDirections[0]);
+   return;
+ }
+ const idx=Math.max(0,(Number(direction)||1)-1);applyRouteData(routeFromStaticData(service,idx,data));
 }
-function applyRouteData(d){if(!d)return;if(Array.isArray(d.stops)&&d.stops.length){route=d.stops.map(x=>({n:x.description||x.name||x.BusStopCode,c:x.code||x.BusStopCode,lat:Number(x.lat??x.Latitude),lng:Number(x.lng??x.Longitude)}));stopIndex=Math.min(1,route.length-1)}if(Array.isArray(d.shape)&&d.shape.length>1)routeTrack=d.shape.map(p=>({lat:Number(p.lat),lng:Number(p.lng)}));else routeTrack=[];}
+function applyRouteData(d){
+ if(!d)return;
+ if(Array.isArray(d.stops)&&d.stops.length){route=d.stops.map(x=>({n:x.description||x.name||x.code,c:x.code,lat:Number(x.lat),lng:Number(x.lng),road:x.road||''}));stopIndex=Math.min(1,route.length-1)}
+ routeTrack=Array.isArray(d.shape)&&d.shape.length>1?d.shape.map(p=>({lat:Number(p.lat),lng:Number(p.lng)})):route.map(s=>({lat:s.lat,lng:s.lng}));
+}
 function pickLiveDirection(cur){const dirs=window.__liveDirections;if(!dirs?.length)return;let best=null;for(const d of dirs){for(const st of d.stops||[]){const dist=haversine(cur.lat,cur.lon,Number(st.lat),Number(st.lng));if(!best||dist<best.dist)best={d,dist}}}if(best&&best.dist<1200){applyRouteData(best.d);window.__liveDirections=null;announce('Matched Service '+$('#service').value+' to the nearest route direction.')}}
 function nearestStopState(cur){if(!route?.length||!route[0]?.lat)return {near:false};let best={dist:1e9,index:-1};route.forEach((st,i)=>{const d=haversine(cur.lat,cur.lon,st.lat,st.lng);if(d<best.dist)best={dist:d,index:i}});return {near:best.dist<45,dist:best.dist,index:best.index};}
 window.addEventListener('beforeunload',stopCamera);

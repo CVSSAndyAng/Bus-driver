@@ -1,81 +1,66 @@
-# Bus Captain SG V6 — Dual Mode Street View Edition
+# Bus Captain SG V7 — No-Worker Street View Edition
 
 A mobile-first Singapore bus-captain role-play / simulator for Android and iPhone.
 
-## Two game modes
+## What changed in V7
+
+**No LTA DataMall API key and no Cloudflare Worker are required.**
+
+The game now loads Singapore bus service/stop/route-shape data directly from the public static dataset at `data.busrouter.sg/v1/` and uses the browser's normal HTTP cache. The game does not call LTA DataMall dynamic APIs.
+
+You can therefore host the whole game as an ordinary static site on Cloudflare Pages or GitHub Pages.
+
+## Two modes
 
 ### 1. Live GPS Captain
 Use this while physically riding on the selected Singapore bus.
 
-- GPS drives the journey automatically.
-- Real Singapore Google Street View is shown at the phone's GPS location.
+- GPS controls the journey automatically.
+- Real Singapore Google Street View is shown near the phone's GPS location.
 - No accelerator, brake or normal turn-signal controls.
 - Phone rotation animates the bus steering wheel for role-play only.
-- STOP REQUEST remains available.
-- HORN and HAZARD controls remain available, including when the real bus stops at a traffic light or in traffic.
-- Door OPEN/CLOSE appears only when GPS indicates the bus is stopped near a recognised stop on the selected service.
-- The game tries to infer the route direction by finding the selected service direction nearest the current GPS location.
+- STOP REQUEST, HORN and HAZARD remain available.
+- Door OPEN/CLOSE appears only when GPS indicates the bus is slow/stopped near a stop belonging to the selected bus service.
+- The game compares the phone's position with each direction of the selected service and chooses the nearest route.
 
 ### 2. Full Route Simulator
 Use this when not riding a real bus.
 
-- GPS is not needed.
-- Select a real Singapore bus service and direction.
-- LTA Bus Routes + Bus Stops provide the ordered real stops.
-- Google driving directions build the road path between those stops.
-- Google Street View supplies the real Singapore streetscape in the windscreen.
-- Accelerator, brake, steering, indicators, doors, bell, announcements, kneeling, wipers and lights are available.
+- GPS is not used.
+- Select a Singapore bus service and direction.
+- The ordered stops and route geometry come from the bundled/public static Singapore bus dataset.
+- Google Street View supplies the realistic Singapore streetscape in the windscreen.
+- Accelerator, brake, steering, indicators, doors, bell, announcements, kneeling, wipers, horn/hazard controls and lights are available.
 - Phone rotation controls steering on supported Android/iPhone devices.
 
-## Important: real-route data
+## Google Maps / Street View
 
-The browser must NOT contain your LTA DataMall Account Key. The included `api/worker.js` is a Cloudflare Worker template. Store the key as a Worker secret named:
-
-`LTA_ACCOUNT_KEY`
-
-The Worker serves:
-
-`/api/route?service=118&direction=1`
-
-or, for Live GPS mode, all directions:
-
-`/api/route?service=118`
-
-The browser then matches the live GPS to the nearest route direction.
-
-## Google Maps setup
-
-Enable the Maps JavaScript API for the browser key. The game uses:
-
-- `StreetViewPanorama` / `StreetViewService` for real Singapore Street View.
-- `DirectionsService` to construct the road path between the actual LTA bus stops in Simulator mode.
-
-Restrict the browser key to your deployed domain, for example:
+A Google Maps JavaScript API browser key is still required for Google Street View. Restrict that browser key to your deployed domain, for example:
 
 `https://your-game.pages.dev/*`
 
-Do not place an unrestricted key in a public GitHub repository.
+The key is a browser key by design; restrict it by website/domain and enable only the Maps JavaScript API required by the game.
 
 ## Hosting
 
-Use HTTPS (Cloudflare Pages or GitHub Pages). HTTPS is required for reliable phone motion and GPS permissions.
+Upload these files to your existing Cloudflare Pages / GitHub repository. There is **no `api/` Worker folder in V7**.
 
 Recommended architecture:
 
 ```text
 Android / iPhone browser
         |
-        +--> Cloudflare Pages (game)
+        +--> Cloudflare Pages (Bus Captain SG)
         |
-        +--> Cloudflare Worker /api/route
-                  |
-                  +--> LTA DataMall
+        +--> public static Singapore bus route data
         |
         +--> Google Maps JavaScript API / Street View
 ```
 
-## V6 behaviour notes
+## Internet requirement
 
-Street View consists of real 360-degree panoramas rather than live video. Simulator movement advances through panoramas along the generated route path. Live GPS mode continuously requests the panorama nearest the real bus's GPS position.
+Both game modes need internet for realistic Street View. The route dataset is small and cacheable, but it is still downloaded from the public static data server when required. If you later want a fully self-contained copy, the three JSON files can be copied into a local `data/` folder and `BUS_DATA_BASE` in `game.js` changed to `./data`.
 
-Door controls are intentionally separated from traffic-light stops: stopping in traffic or at a red light does **not** expose the door button; it exposes/retains horn and hazard controls. Door controls are shown only when the bus is both slow/stopped and close to a bus stop belonging to the selected route.
+## Data note
+
+The static bus data source is the open-source SG Bus Data project used by BusRouter SG. It aggregates Singapore bus stops, services and route geometry and is not the LTA DataMall real-time API. Because it is static/cached data, route changes may not appear instantly.
