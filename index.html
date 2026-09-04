@@ -4,25 +4,25 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
   <meta name="theme-color" content="#202327" />
-  <title>Bus Captain SG — Phone Steering Edition</title>
+  <title>Bus Captain SG — Dual Mode Street View Edition</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 <div id="app">
   <header class="topbar">
-    <div><h1>🚌 Bus Captain SG</h1><p>Phone Steering Edition · rotate your phone like a real bus steering wheel</p></div>
+    <div><h1>🚌 Bus Captain SG</h1><p>Live GPS Captain + Full Singapore Route Simulator</p></div>
     <div class="header-actions"><button id="soundBtn" class="ghost">🔊 Sound</button><button id="helpBtn" class="ghost">❓ Help</button></div>
   </header>
 
   <section id="setup" class="panel setup-grid">
-    <div><label>Game mode</label><div class="segmented"><button class="mode active" data-mode="driver">🎮 Driver</button><button class="mode" data-mode="ride">📍 Ride-Along</button></div></div>
-    <div><label for="service">Bus service</label><select id="service"><option>24</option><option>27</option><option>36</option><option>53</option><option selected>118</option></select></div>
-    <div><label for="weather">Weather</label><select id="weather"><option value="sunny">☀️ Sunny</option><option value="rain">🌧️ Tropical rain</option><option value="evening">🌆 Evening</option></select></div>
-    <div><label for="difficulty">Difficulty</label><select id="difficulty"><option value="easy">Little Captain</option><option value="normal" selected>Bus Captain</option><option value="pro">Super Captain</option></select></div>
-    <div><label for="roadSource">Windscreen view</label><select id="roadSource"><option value="street">🇸🇬 Singapore Street View</option><option value="ar">📷 AR live camera</option><option value="sim">🎮 Offline training road</option></select></div>
+    <div><label>Game mode</label><div class="segmented dual-mode"><button class="mode active" data-mode="ride">📍 LIVE GPS CAPTAIN<small>Riding on a real bus</small></button><button class="mode" data-mode="driver">🎮 FULL ROUTE SIMULATOR<small>Drive the actual route</small></button></div></div>
+    <div><label for="service">Bus service</label><input id="service" inputmode="numeric" value="118" placeholder="e.g. 118" /></div><div id="directionWrap"><label for="direction">Direction <small>(Simulator)</small></label><select id="direction"><option value="1">Direction 1</option><option value="2">Direction 2</option></select></div>
+    
+    
+    <div><label>Windscreen view</label><div class="locked-source">🇸🇬 REAL SINGAPORE STREET VIEW</div><input id="roadSource" type="hidden" value="street" /></div>
     <div id="mapsKeyWrap" class="maps-key-wrap"><label for="mapsApiKey">Google Maps browser key <small>(Street View only)</small></label><input id="mapsApiKey" type="password" autocomplete="off" placeholder="Paste key for this session" /><small>Use a domain-restricted Maps JavaScript API key. The game does not save this field.</small></div>
-    <div class="phone-steer-option"><label><input id="phoneSteering" type="checkbox" checked /> 📱 Use phone rotation as steering wheel</label><small>Best in landscape. On iPhone/iPad, motion access will be requested when you start.</small></div><div class="start-wrap"><button id="startBtn" class="primary">Start Journey</button></div>
+    <div class="phone-steer-option"><label><input id="phoneSteering" type="checkbox" checked /> 📱 Rotate phone to move the cockpit steering wheel</label><small>Live mode: role-play only. Simulator mode: controls the bus. Best in landscape.</small></div><div class="start-wrap"><button id="startBtn" class="primary">Start Journey</button></div>
   </section>
 
   <main id="game" class="hidden">
@@ -56,10 +56,15 @@
         <div id="eventBadge" class="event-badge">40</div><div id="viewBadge" class="view-badge">OFFLINE ROAD</div>
         <div id="busStoppingSign" class="bus-stopping-sign hidden">BUS STOPPING</div>
         <div id="mobileDriveUI" class="mobile-drive-ui hidden" aria-label="Mobile driving controls">
-          <div class="mobile-top-controls">
+          <div class="mobile-top-controls" id="simTopControls">
             <button id="mobileLeftSignal" class="mobile-signal left-signal">◀<span>LEFT SIGNAL</span></button>
             <button id="mobileStopRequest" class="mobile-stop-request">STOP<br><span>REQUEST</span></button>
             <button id="mobileRightSignal" class="mobile-signal right-signal">▶<span>RIGHT SIGNAL</span></button>
+          </div>
+          <div class="live-top-controls hidden" id="liveTopControls">
+            <button id="mobileHornBtn" class="live-action horn">📣<span>HORN</span></button>
+            <button id="mobileStopRequestLive" class="mobile-stop-request">STOP<br><span>REQUEST</span></button>
+            <button id="mobileHazardBtn" class="live-action hazard">⚠️<span>HAZARD</span></button>
           </div>
           <button id="tiltCalibrateBtn" class="tilt-calibrate">⟳ CENTRE STEERING</button>
           <div id="tiltStatus" class="tilt-status">PHONE STEERING</div>
@@ -67,7 +72,7 @@
             <div class="stopped-label">BUS STOPPED</div>
             <button id="mobileDoorBtn" class="mobile-door-btn">OPEN DOORS</button>
           </div>
-          <div class="mobile-pedals">
+          <div class="mobile-pedals" id="mobilePedals">
             <button id="mobileBrakeBtn" class="mobile-pedal mobile-brake">BRAKE</button>
             <button id="mobileGoBtn" class="mobile-pedal mobile-go">ACCEL</button>
           </div>
@@ -132,7 +137,7 @@
       <button id="rightBtn" class="steer">↷<small>TURN WHEEL RIGHT</small></button>
     </section>
 
-    <section id="rideControls" class="panel ride hidden"><div><h2>Ride-Along Mode</h2><p>Use this while riding a real Singapore bus. GPS stays in this browser and drives the virtual trip progress.</p></div><button id="gpsBtn" class="primary">Enable GPS</button></section>
+    <section id="rideControls" class="panel ride hidden"><div><h2>Live GPS Captain</h2><p>Your real bus supplies the speed and movement. Doors appear only at bus stops. Horn and hazards stay available when the bus is stopped at lights or in traffic.</p></div><button id="gpsBtn" class="primary">Enable / Re-enable GPS</button></section>
   </main>
 
   <div id="help" class="modal hidden"><div class="modal-card"><button id="closeHelp" class="close">✕</button><h2>Phone + Driver Seat Controls</h2><p><b>Phone steering:</b> on Android or iPhone, hold the phone in landscape and rotate it left/right like a steering wheel. Tap CENTRE STEERING whenever you change your holding position. The cockpit wheel rotates with the phone.</p><p><b>Desktop steering:</b> drag the cockpit wheel with a mouse or finger. A/D or arrow keys work too.</p><p><b>Pedals:</b> press the cockpit accelerator and brake pedals, or use W/↑ and S/↓.</p><p><b>Operations:</b> door, bell, next-stop announcement and kneeling are on the left console. Indicators, wipers and lights are on the right console.</p><p><b>Windscreen:</b> choose Singapore Street View, AR live camera, or the offline training road before starting. Street View requires a Google Maps JavaScript API browser key. AR camera requires camera permission.</p><p><b>Driving:</b> keep left, indicate before leaving a stop, stop smoothly, and open doors only after stopping.</p></div></div>

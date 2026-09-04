@@ -1,67 +1,81 @@
-# Bus Captain SG V4 — AR + Street View Edition
+# Bus Captain SG V6 — Dual Mode Street View Edition
 
-A browser-based Singapore bus driving simulator with a fixed right-hand-drive cockpit and three windscreen modes.
+A mobile-first Singapore bus-captain role-play / simulator for Android and iPhone.
 
-## Windscreen modes
+## Two game modes
 
-1. **Singapore Street View** — Google Maps JavaScript API `StreetViewPanorama` is displayed behind the cockpit. The demo advances along a Marina Centre training corridor as the virtual bus moves. Steering changes the panorama heading.
-2. **AR live camera** — uses the device rear camera (`getUserMedia`) as the windscreen. The cockpit, next-stop chip and route arrow remain over the live view. Intended for ride-along use while a child is safely seated, not for operating a real vehicle.
-3. **Offline training road** — the original generated road scene, with no API key or internet requirement.
+### 1. Live GPS Captain
+Use this while physically riding on the selected Singapore bus.
+
+- GPS drives the journey automatically.
+- Real Singapore Google Street View is shown at the phone's GPS location.
+- No accelerator, brake or normal turn-signal controls.
+- Phone rotation animates the bus steering wheel for role-play only.
+- STOP REQUEST remains available.
+- HORN and HAZARD controls remain available, including when the real bus stops at a traffic light or in traffic.
+- Door OPEN/CLOSE appears only when GPS indicates the bus is stopped near a recognised stop on the selected service.
+- The game tries to infer the route direction by finding the selected service direction nearest the current GPS location.
+
+### 2. Full Route Simulator
+Use this when not riding a real bus.
+
+- GPS is not needed.
+- Select a real Singapore bus service and direction.
+- LTA Bus Routes + Bus Stops provide the ordered real stops.
+- Google driving directions build the road path between those stops.
+- Google Street View supplies the real Singapore streetscape in the windscreen.
+- Accelerator, brake, steering, indicators, doors, bell, announcements, kneeling, wipers and lights are available.
+- Phone rotation controls steering on supported Android/iPhone devices.
+
+## Important: real-route data
+
+The browser must NOT contain your LTA DataMall Account Key. The included `api/worker.js` is a Cloudflare Worker template. Store the key as a Worker secret named:
+
+`LTA_ACCOUNT_KEY`
+
+The Worker serves:
+
+`/api/route?service=118&direction=1`
+
+or, for Live GPS mode, all directions:
+
+`/api/route?service=118`
+
+The browser then matches the live GPS to the nearest route direction.
+
+## Google Maps setup
+
+Enable the Maps JavaScript API for the browser key. The game uses:
+
+- `StreetViewPanorama` / `StreetViewService` for real Singapore Street View.
+- `DirectionsService` to construct the road path between the actual LTA bus stops in Simulator mode.
+
+Restrict the browser key to your deployed domain, for example:
+
+`https://your-game.pages.dev/*`
+
+Do not place an unrestricted key in a public GitHub repository.
 
 ## Hosting
 
-Upload all files in this folder to the existing GitHub repository / Cloudflare Pages project. `index.html` must remain at the project root.
+Use HTTPS (Cloudflare Pages or GitHub Pages). HTTPS is required for reliable phone motion and GPS permissions.
 
-Camera mode requires HTTPS (GitHub Pages and Cloudflare Pages both provide HTTPS).
+Recommended architecture:
 
-## Google Street View setup
-
-Street View needs a Google Maps JavaScript API browser key with Street View / Maps JavaScript API enabled. The setup screen accepts a key for the current page session and does not save the field.
-
-For a school deployment, create a dedicated browser key and restrict it by **HTTP referrer** to the exact school game domain. Do not use an unrestricted key. Google Maps Platform billing/usage terms apply.
-
-Optional alternative: define the key before `game.js` loads:
-
-```html
-<script>
-window.BUS_CAPTAIN_CONFIG = { googleMapsApiKey: "YOUR_RESTRICTED_BROWSER_KEY" };
-</script>
+```text
+Android / iPhone browser
+        |
+        +--> Cloudflare Pages (game)
+        |
+        +--> Cloudflare Worker /api/route
+                  |
+                  +--> LTA DataMall
+        |
+        +--> Google Maps JavaScript API / Street View
 ```
 
-A browser key is necessarily delivered to the browser; security comes from restricting the key to the permitted domain and APIs.
+## V6 behaviour notes
 
-## Safety / privacy
+Street View consists of real 360-degree panoramas rather than live video. Simulator movement advances through panoramas along the generated route path. Live GPS mode continuously requests the panorama nearest the real bus's GPS position.
 
-- AR camera video remains in the browser and is not uploaded by this game.
-- Ride-Along GPS, when enabled, remains in the browser in this prototype.
-- Do not use AR mode while crossing roads or while operating any real vehicle.
-- Street View imagery remains Google-hosted and must retain Google attribution/terms.
-
-## Controls
-
-- Drag steering wheel: up to 450 degrees each direction
-- A/D or left/right arrows: steer
-- W/up arrow: accelerate
-- S/down arrow: brake
-- Q/E: indicators
-- Space: doors
-- Cockpit buttons: bell, announcement, kneeling, wipers, lights
-
-## Prototype note
-
-The Street View route is currently a Singapore training corridor rather than a certified reproduction of a particular LTA service. A later version can load real bus-route coordinates and bus stops from official transport data.
-
-## V5 Phone Steering Edition
-
-This version is designed for Android phones and iPhones in landscape orientation.
-
-- Device rotation/tilt steers the simulated bus. Hold the phone like a steering wheel and rotate left/right.
-- Tap **CENTRE STEERING** to recalibrate the neutral hand position.
-- Large left/right signal buttons remain on screen while driving.
-- The red **STOP REQUEST** control lights a **BUS STOPPING** sign on the windscreen.
-- The door control is hidden while moving. When the bus is fully stopped inside a bus-stop zone, an **OPEN DOORS** button appears automatically. It changes to **CLOSE DOORS** when opened.
-- Large BRAKE and ACCEL controls remain at the bottom corners.
-- iOS asks for Motion & Orientation access after Start Journey is tapped.
-- Camera, geolocation and device-motion features require HTTPS when deployed. GitHub Pages and Cloudflare Pages provide HTTPS.
-
-For best play, add the site to the phone home screen and use landscape orientation.
+Door controls are intentionally separated from traffic-light stops: stopping in traffic or at a red light does **not** expose the door button; it exposes/retains horn and hazard controls. Door controls are shown only when the bus is both slow/stopped and close to a bus stop belonging to the selected route.
