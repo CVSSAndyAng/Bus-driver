@@ -1,5 +1,7 @@
-# Optional live-data proxy
+# Optional server integration
 
-For a production version, create server-side endpoints here and store your LTA DataMall Account Key as an environment variable (for example `LTA_ACCOUNT_KEY`). Never expose the key in browser JavaScript.
+V4 does not require a backend for AR camera mode or the offline training road.
 
-A proxy can fetch Bus Routes, Bus Stops, Bus Services and Bus Arrival data, then return only the fields needed by the game.
+For future real LTA operations, place LTA DataMall credentials in a server-side endpoint (for example a Cloudflare Worker) and expose only the bus data needed by the game.
+
+Google Maps JavaScript API Street View is a browser-side Google Maps Platform service. Use a dedicated HTTP-referrer-restricted browser key for the hosted game domain.
