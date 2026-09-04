@@ -3,119 +3,91 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
-  <meta name="theme-color" content="#f7b500" />
-  <title>Bus Captain SG</title>
+  <meta name="theme-color" content="#0d2f28" />
+  <title>Bus Captain SG — Cockpit Edition</title>
+  <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div id="app">
-    <header>
-      <div>
-        <h1>🚌 Bus Captain SG</h1>
-        <p>Learn how a Singapore bus journey works.</p>
-      </div>
-      <div class="header-actions">
-        <button id="soundBtn" class="ghost">🔊 Sound</button>
-        <button id="helpBtn" class="ghost">❓ Help</button>
-      </div>
-    </header>
+<div id="app">
+  <header class="topbar">
+    <div><h1>🚌 Bus Captain SG</h1><p>Cockpit Edition · Singapore driving simulator</p></div>
+    <div class="header-actions"><button id="soundBtn" class="ghost">🔊 Sound</button><button id="helpBtn" class="ghost">❓ Help</button></div>
+  </header>
 
-    <section id="setup" class="panel setup-grid">
-      <div>
-        <label>Game mode</label>
-        <div class="segmented">
-          <button class="mode active" data-mode="driver">🎮 Driver</button>
-          <button class="mode" data-mode="ride">📍 Ride-Along</button>
-        </div>
-      </div>
-      <div>
-        <label for="service">Bus service</label>
-        <select id="service">
-          <option value="24">24</option>
-          <option value="27">27</option>
-          <option value="36">36</option>
-          <option value="53">53</option>
-          <option value="118">118</option>
-        </select>
-      </div>
-      <div>
-        <label for="difficulty">Difficulty</label>
-        <select id="difficulty">
-          <option value="easy">Little Captain</option>
-          <option value="normal" selected>Bus Captain</option>
-          <option value="pro">Super Captain</option>
-        </select>
-      </div>
-      <div class="start-wrap">
-        <button id="startBtn" class="primary">Start Journey</button>
-      </div>
+  <section id="setup" class="panel setup-grid">
+    <div><label>Game mode</label><div class="segmented"><button class="mode active" data-mode="driver">🎮 Driver</button><button class="mode" data-mode="ride">📍 Ride-Along</button></div></div>
+    <div><label for="service">Bus service</label><select id="service"><option>24</option><option>27</option><option>36</option><option>53</option><option selected>118</option></select></div>
+    <div><label for="weather">Weather</label><select id="weather"><option value="sunny">☀️ Sunny</option><option value="rain">🌧️ Tropical rain</option><option value="evening">🌆 Evening</option></select></div>
+    <div><label for="difficulty">Difficulty</label><select id="difficulty"><option value="easy">Little Captain</option><option value="normal" selected>Bus Captain</option><option value="pro">Super Captain</option></select></div>
+    <div class="start-wrap"><button id="startBtn" class="primary">Start Journey</button></div>
+  </section>
+
+  <main id="game" class="hidden">
+    <section class="hud">
+      <div class="hud-card route"><span>SERVICE</span><strong id="hudService">118</strong></div>
+      <div class="hud-card"><span>SPEED</span><strong><b id="speed">0</b> km/h</strong></div>
+      <div class="hud-card wide"><span>NEXT STOP</span><strong id="nextStop">—</strong><small id="nextCode">—</small></div>
+      <div class="hud-card"><span>PASSENGERS</span><strong id="passengers">0</strong></div>
+      <div class="hud-card"><span>CAPTAIN SCORE</span><strong id="score">100</strong></div>
     </section>
 
-    <main id="game" class="hidden">
-      <section class="hud">
-        <div class="hud-card"><span>Service</span><strong id="hudService">24</strong></div>
-        <div class="hud-card"><span>Speed</span><strong><b id="speed">0</b> km/h</strong></div>
-        <div class="hud-card"><span>Next stop</span><strong id="nextStop">—</strong></div>
-        <div class="hud-card"><span>Passengers</span><strong id="passengers">0</strong></div>
-        <div class="hud-card"><span>Score</span><strong id="score">100</strong></div>
-      </section>
+    <section class="sim-shell">
+      <div class="windscreen panel">
+        <canvas id="road" width="1280" height="720" aria-label="Driver point of view Singapore bus simulator"></canvas>
+        <div class="windscreen-tint"></div>
+        <div id="announcement" class="announcement">Welcome aboard.</div>
+        <div id="gpsBanner" class="gps-banner hidden">📍 Ride-Along GPS active</div>
+        <div id="eventBadge" class="event-badge">40 km/h</div>
+        <div class="mirror mirror-left"><div id="leftMirrorScene"></div></div>
+        <div class="mirror mirror-right"><div id="rightMirrorScene"></div></div>
 
-      <section class="game-layout">
-        <div class="scene panel">
-          <canvas id="road" width="1000" height="560" aria-label="Bus driving game"></canvas>
-          <div id="announcement" class="announcement">Welcome aboard!</div>
-          <div id="gpsBanner" class="gps-banner hidden">📍 Ride-Along GPS active</div>
-        </div>
-
-        <aside class="ops panel">
-          <h2>Bus Operations</h2>
-          <button id="doorBtn" class="op-btn">🚪 Open doors</button>
-          <button id="bellBtn" class="op-btn">🔔 Bell</button>
-          <button id="announceBtn" class="op-btn">📢 Announce next stop</button>
-          <button id="kneelBtn" class="op-btn">♿ Kneel bus</button>
-          <div class="status-box">
-            <div><span>Doors</span><b id="doorStatus">Closed</b></div>
-            <div><span>Bus</span><b id="busStatus">In service</b></div>
-            <div><span>Schedule</span><b id="scheduleStatus">On time</b></div>
+        <div class="cockpit">
+          <div class="dashboard-left">
+            <div class="indicator-strip"><span id="leftInd">◀</span><span id="doorLamp">🚪</span><span id="rightInd">▶</span></div>
+            <div class="speedo"><b id="dashSpeed">0</b><small>km/h</small></div>
           </div>
-          <div class="mission">
-            <h3>Captain Mission</h3>
-            <p id="missionText">Drive safely to the next bus stop.</p>
+          <div class="steering-wheel"><div class="wheel-center">SG<br><small>BUS</small></div></div>
+          <div class="dashboard-screen">
+            <span>NEXT STOP</span><strong id="dashStop">—</strong><small id="dashCode">—</small>
+            <div class="progress"><i id="routeProgress"></i></div>
           </div>
-        </aside>
-      </section>
-
-      <section id="driverControls" class="controls panel">
-        <button id="leftBtn" class="steer">↩</button>
-        <button id="brakeBtn" class="pedal brake">BRAKE</button>
-        <button id="goBtn" class="pedal go">GO</button>
-        <button id="rightBtn" class="steer">↪</button>
-      </section>
-
-      <section id="rideControls" class="panel ride hidden">
-        <div>
-          <h2>Ride-Along Mode</h2>
-          <p>Use this while you are riding a real bus. Your phone GPS moves the game bus as you travel.</p>
+          <div class="ticket-console"><span>TRIP</span><b id="tripTime">00:00</b><small id="scheduleStatus">On time</small></div>
         </div>
-        <button id="gpsBtn" class="primary">Enable GPS</button>
-      </section>
-
-      <section class="learning panel">
-        <h2>What did you learn?</h2>
-        <div id="fact">A bus captain checks that doors are closed before moving off.</div>
-      </section>
-    </main>
-
-    <div id="help" class="modal hidden">
-      <div class="modal-card">
-        <button id="closeHelp" class="close">✕</button>
-        <h2>How to play</h2>
-        <p><b>Driver:</b> hold GO to accelerate, BRAKE to slow down, steer gently, stop inside the yellow bus-stop zone, open the doors, then close them before moving.</p>
-        <p><b>Ride-Along:</b> enable location permission while travelling. The virtual journey reacts to your real movement. GPS is processed in your browser and is not uploaded by this prototype.</p>
-        <p>Earn points for smooth stops, obeying speed limits, correct door use and helping passengers.</p>
       </div>
-    </div>
-  </div>
-  <script src="game.js"></script>
+
+      <aside class="ops panel">
+        <h2>Captain's Console</h2>
+        <div class="ops-grid">
+          <button id="doorBtn" class="op-btn">🚪 Open doors</button>
+          <button id="bellBtn" class="op-btn">🔔 Stop bell</button>
+          <button id="announceBtn" class="op-btn">📢 Next stop</button>
+          <button id="kneelBtn" class="op-btn">♿ Kneel bus</button>
+          <button id="leftSignalBtn" class="op-btn">⬅️ Left signal</button>
+          <button id="rightSignalBtn" class="op-btn">➡️ Right signal</button>
+          <button id="wiperBtn" class="op-btn">🌧️ Wipers</button>
+          <button id="lightBtn" class="op-btn">💡 Headlights</button>
+        </div>
+        <div class="status-box">
+          <div><span>Doors</span><b id="doorStatus">Closed</b></div><div><span>Bus</span><b id="busStatus">Ready</b></div><div><span>Road</span><b id="roadStatus">Clear</b></div>
+        </div>
+        <div class="mission"><h3>Captain Mission</h3><p id="missionText">Drive safely to the next bus stop.</p></div>
+        <div class="lesson"><h3>Singapore Road Tip</h3><p id="fact">Keep left unless overtaking.</p></div>
+      </aside>
+    </section>
+
+    <section id="driverControls" class="controls panel">
+      <button id="leftBtn" class="steer">↙<small>LEFT</small></button>
+      <button id="brakeBtn" class="pedal brake">BRAKE<small>↓ / S</small></button>
+      <button id="goBtn" class="pedal go">ACCELERATE<small>↑ / W</small></button>
+      <button id="rightBtn" class="steer">↘<small>RIGHT</small></button>
+    </section>
+
+    <section id="rideControls" class="panel ride hidden"><div><h2>Ride-Along Mode</h2><p>Use this while riding a real Singapore bus. GPS stays in this browser and drives the virtual trip progress.</p></div><button id="gpsBtn" class="primary">Enable GPS</button></section>
+  </main>
+
+  <div id="help" class="modal hidden"><div class="modal-card"><button id="closeHelp" class="close">✕</button><h2>How to play</h2><p><b>Driver:</b> accelerate and brake smoothly, keep to the left lane, obey signals, indicate before entering or leaving a bus bay, stop inside the yellow stop zone and open the doors only when stationary.</p><p><b>Keyboard:</b> W/↑ accelerate, S/↓ brake, A/← and D/→ steer. Q/E indicators. Space toggles doors.</p><p><b>Ride-Along:</b> enable location permission while travelling. GPS movement advances the simulator without uploading your location in this prototype.</p></div></div>
+</div>
+<script src="game.js"></script>
 </body>
 </html>

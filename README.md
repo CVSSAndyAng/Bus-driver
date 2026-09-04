@@ -1,28 +1,29 @@
-# Bus Captain SG
+# Bus Captain SG — Cockpit Edition
 
-A mobile-friendly browser game for children to learn Singapore bus-driving and bus-operation routines.
+A browser-based, kid-friendly Singapore bus-driving simulator.
 
-## What is included
-- Driver Mode: acceleration, braking, steering, bus stops, doors, passenger counts, score, speed limit and operations.
-- Ride-Along Mode: browser geolocation can move the virtual bus while a child is actually travelling.
-- Touch controls for phones/tablets and arrow-key controls for laptops.
-- Spoken next-stop/game announcements using the browser Speech Synthesis API.
-- No framework and no installation required.
+## Version 2 highlights
+- First-person driver's cockpit / windscreen view
+- Left-side Singapore road driving
+- Perspective road, traffic, HDB-style streetscape and tropical greenery
+- Singapore-style bus stop poles with five-digit codes
+- Bus bays, BUS road markings, pedestrian crossing and traffic signals
+- Bus captain operations: doors, bell, announcements, kneeling, indicators, wipers and headlights
+- Tropical rain and evening modes
+- Passenger boarding/alighting and safe-driving score
+- Keyboard and large touchscreen controls
+- Ride-Along GPS mode (location processed in the browser)
 
-## Run locally
-Open `index.html` directly for Driver Mode. For GPS permissions, browsers generally require HTTPS (or localhost), so host the folder on GitHub Pages, Cloudflare Pages, Netlify or another HTTPS host.
+## Controls
+- W / Up: accelerate
+- S / Down: brake
+- A / Left and D / Right: steer
+- Q: left indicator
+- E: right indicator
+- Space: doors
 
-## Real Singapore live-data upgrade
-LTA DataMall offers Bus Arrival, Bus Routes, Bus Stops and other live/dynamic transport APIs. These APIs require an Account Key. Do NOT put that key in `game.js`, because students could see it. Put the key in a server-side/serverless environment variable and let the browser call your own `/api/...` endpoint.
+## Hosting
+Upload all files in this folder to GitHub and deploy through GitHub Pages or Cloudflare Pages. `index.html` must remain at the website root.
 
-OneMap can provide Singapore mapping/routing. Some APIs require token authentication. Keep credentials server-side where required.
-
-## Privacy
-Ride-Along GPS in this prototype is processed only in the child's browser. The prototype does not send coordinates to a server.
-
-## Suggested next upgrade
-1. Select any actual Singapore bus service.
-2. Load its real stop sequence from DataMall.
-3. Match phone GPS to the selected service's route/stops.
-4. Show live/real stop names and progress.
-5. Add bus-interchange missions, wheelchair boarding, rainy weather, traffic lights and safe-driving badges.
+## Live Singapore data
+The game currently uses an offline training-route dataset for dependable play. A production version can connect to LTA DataMall / GTFS and OneMap through a server-side proxy. Do not expose API credentials in browser JavaScript.
